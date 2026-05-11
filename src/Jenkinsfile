@@ -1,0 +1,81 @@
+pipeline {
+    agent any
+
+    // 1. Добавляем параметры, чтобы в интерфейсе Jenkins появилась кнопка ручного запуска
+    parameters {
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Запускать тесты во время сборки?'
+        )
+        choice(
+            name: 'BUILD_TYPE',
+            choices: ['bootJar', 'jar'],
+            description: 'Тип собираемого архива (bootJar для Spring Boot)'
+        )
+    }
+
+    tools {
+        jdk 'Java 17'
+    }
+
+    environment {
+        GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Grant Execute Permissions') {
+            steps {
+                sh 'chmod +x ./gradlew'
+            }
+        }
+
+        stage('Compile') {
+            steps {
+                sh './gradlew compileJava -x test'
+            }
+        }
+
+        stage('Run Tests') {
+            // Исполняем стадию только если пользователь отметил галочку RUN_TESTS
+            when {
+                expression { return params.RUN_TESTS }
+            }
+            steps {
+                sh './gradlew test'
+            }
+            post {
+                always {
+                    junit '**/build/test-results/test/*.xml'
+                }
+            }
+        }
+
+        stage('Build Jar') {
+            steps {
+                // Используем выбранный в интерфейсе Jenkins параметр BUILD_TYPE
+                sh "./gradlew ${params.BUILD_TYPE} -x test"
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: '**/build/libs/*.jar', fingerprint: true
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "🎉 Сборка успешно завершена вручную с параметрами: RUN_TESTS=${params.RUN_TESTS}, TYPE=${params.BUILD_TYPE}"
+        }
+        failure {
+            echo '❌ Ошибка сборки.'
+        }
+    }
+}
