@@ -4,19 +4,15 @@ pipeline {
     // 1. Добавляем параметры, чтобы в интерфейсе Jenkins появилась кнопка ручного запуска
     parameters {
         booleanParam(
-            name: 'RUN_TESTS',
+            name: 'RUN_STUDENT',
             defaultValue: true,
-            description: 'Запускать тесты во время сборки?'
+            description: 'Билд приложения'
         )
         choice(
             name: 'BUILD_TYPE',
             choices: ['bootJar', 'jar'],
             description: 'Тип собираемого архива (bootJar для Spring Boot)'
         )
-    }
-
-    tools {
-        jdk 'Java 17'
     }
 
     environment {
