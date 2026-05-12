@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Порт 8081, чтобы не было конфликта с самим Jenkins (8080)
         APP_PORT = "8081"
         APP_URL = "http://localhost:${APP_PORT}"
     }
@@ -24,36 +23,33 @@ pipeline {
         stage('Run App Background') {
             steps {
                 script {
-                    // Убиваем старый процесс, если он висит на этом порту
+                    // Убиваем старый процесс на порту
                     sh "fuser -k ${APP_PORT}/tcp || true"
 
-                    // Запуск приложения в фоне (nohup + &)
-                    // Логи будут писаться в app_log.txt
+                    // Запуск приложения
                     sh "nohup java -jar build/libs/*.jar --server.port=${APP_PORT} > app_log.txt 2>&1 &"
 
-                    // Ждем, пока Spring Boot поднимется (Health check)
-                    echo "Waiting for app to start on ${APP_URL}..."
-                    timeout(time: 2, unit: 'MINUTES') {
-                        waitUntil {
-                            def r = sh(script: "curl -s ${APP_URL}/actuator/health | grep UP", returnStatus: true)
-                            return (r == 0)
-                        }
+                    echo "Waiting for app to start..."
+                    // Ждем 30 секунд (даем время Spring Boot подняться без Actuator)
+                    sleep 30
+
+                    // Проверяем, что приложение отвечает хоть чем-то (даже 404)
+                    def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
+                    if (r != 0) {
+                        error "Приложение не запустилось! Проверьте логи ниже."
                     }
-                    echo "Application is UP!"
                 }
             }
         }
 
-        stage('Run API Tests from External Repo') {
+        stage('Run API Tests') {
             steps {
-                // Создаем отдельную папку для тестов
                 dir('external-api-tests') {
-                    // Клонируем репозиторий с тестами
+                    // ОБЯЗАТЕЛЬНО: укажите здесь ваш реальный репозиторий с тестами
                     git url: 'https://github.com',
                         branch: 'main'
 
                     sh 'chmod +x gradlew'
-                    // Запускаем тесты и передаем URL нашего запущенного приложения
                     sh "./gradlew test -Dbase.url=${APP_URL}"
                 }
             }
@@ -62,19 +58,17 @@ pipeline {
 
     post {
         always {
-            // Собираем артефакты и отчеты
+            // Выводим логи приложения в консоль Jenkins, чтобы видеть ошибки базы данных
+            echo "--- LOGS START ---"
+            sh "cat app_log.txt || true"
+            echo "--- LOGS END ---"
+
             archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
 
-            // Если в репозитории с тестами настроен Allure
-            allure includeProperties: false, results: [[path: 'external-api-tests/build/allure-results']]
+            // Удаляем allure, чтобы не было ошибки NoSuchMethodError
+            junit '**/build/test-results/test/*.xml'
 
-            // Останавливаем приложение после тестов
             sh "fuser -k ${APP_PORT}/tcp || true"
-        }
-        failure {
-            echo "Pipeline failed. Check app_log.txt for details."
-            // Можно вывести логи приложения в консоль Jenkins при падении
-            sh "cat app_log.txt || true"
         }
     }
 }
