@@ -1,77 +1,80 @@
 pipeline {
     agent any
 
-    // 1. Добавляем параметры, чтобы в интерфейсе Jenkins появилась кнопка ручного запуска
-    parameters {
-        booleanParam(
-            name: 'RUN_STUDENT',
-            defaultValue: true,
-            description: 'Билд приложения'
-        )
-        choice(
-            name: 'BUILD_TYPE',
-            choices: ['bootJar', 'jar'],
-            description: 'Тип собираемого архива (bootJar для Spring Boot)'
-        )
-    }
-
     environment {
-        GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
+        // Порт 8081, чтобы не было конфликта с самим Jenkins (8080)
+        APP_PORT = "8081"
+        APP_URL = "http://localhost:${APP_PORT}"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout App') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Grant Execute Permissions') {
+        stage('Build App') {
             steps {
-                sh 'chmod +x ./gradlew'
+                sh 'chmod +x gradlew'
+                sh './gradlew clean bootJar -x test'
             }
         }
 
-        stage('Compile') {
+        stage('Run App Background') {
             steps {
-                sh './gradlew compileJava -x test'
-            }
-        }
+                script {
+                    // Убиваем старый процесс, если он висит на этом порту
+                    sh "fuser -k ${APP_PORT}/tcp || true"
 
-        stage('Run Tests') {
-            // Исполняем стадию только если пользователь отметил галочку RUN_TESTS
-            when {
-                expression { return params.RUN_TESTS }
-            }
-            steps {
-                sh './gradlew test'
-            }
-            post {
-                always {
-                    junit '**/build/test-results/test/*.xml'
+                    // Запуск приложения в фоне (nohup + &)
+                    // Логи будут писаться в app_log.txt
+                    sh "nohup java -jar build/libs/*.jar --server.port=${APP_PORT} > app_log.txt 2>&1 &"
+
+                    // Ждем, пока Spring Boot поднимется (Health check)
+                    echo "Waiting for app to start on ${APP_URL}..."
+                    timeout(time: 2, unit: 'MINUTES') {
+                        waitUntil {
+                            def r = sh(script: "curl -s ${APP_URL}/actuator/health | grep UP", returnStatus: true)
+                            return (r == 0)
+                        }
+                    }
+                    echo "Application is UP!"
                 }
             }
         }
 
-        stage('Build Jar') {
+        stage('Run API Tests from External Repo') {
             steps {
-                // Используем выбранный в интерфейсе Jenkins параметр BUILD_TYPE
-                sh "./gradlew ${params.BUILD_TYPE} -x test"
-            }
-            post {
-                success {
-                    archiveArtifacts artifacts: '**/build/libs/*.jar', fingerprint: true
+                // Создаем отдельную папку для тестов
+                dir('external-api-tests') {
+                    // Клонируем репозиторий с тестами
+                    git url: 'https://github.com',
+                        branch: 'main'
+
+                    sh 'chmod +x gradlew'
+                    // Запускаем тесты и передаем URL нашего запущенного приложения
+                    sh "./gradlew test -Dbase.url=${APP_URL}"
                 }
             }
         }
     }
 
     post {
-        success {
-            echo "🎉 Сборка успешно завершена вручную с параметрами: RUN_TESTS=${params.RUN_TESTS}, TYPE=${params.BUILD_TYPE}"
+        always {
+            // Собираем артефакты и отчеты
+            archiveArtifacts artifacts: 'build/libs/*.jar', fingerprint: true
+
+            // Если в репозитории с тестами настроен Allure
+            allure includeProperties: false, results: [[path: 'external-api-tests/build/allure-results']]
+
+            // Останавливаем приложение после тестов
+            sh "fuser -k ${APP_PORT}/tcp || true"
         }
         failure {
-            echo '❌ Ошибка сборки.'
+            echo "Pipeline failed. Check app_log.txt for details."
+            // Можно вывести логи приложения в консоль Jenkins при падении
+            sh "cat app_log.txt || true"
         }
     }
 }
