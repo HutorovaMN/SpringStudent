@@ -67,7 +67,7 @@ pipeline {
                     sh "fuser -k ${APP_PORT}/tcp || true"
 
                     // Запускаем приложение в фоновом режиме
-                    sh "nohup java -jar build/libs/*.jar --server.port=${APP_PORT} > app_log.txt 2>&1 &"
+                    sh "nohup java -jar build/libs/*.jar --server.port=${APP_PORT} > app_log.txt 2>&1  &"
 
                     // ВСТАВИЛ СТРОКУ СЮДА
                     echo "Waiting for app to start with H2 database..."
