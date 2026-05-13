@@ -71,7 +71,7 @@ pipeline {
 
                     // ВСТАВИЛ СТРОКУ СЮДА
                     echo "Waiting for app to start with H2 database..."
-                    sleep 30
+                    sleep 60
 
                     // Проверяем, жива ли сборка
                     def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
