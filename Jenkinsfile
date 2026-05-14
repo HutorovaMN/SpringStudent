@@ -1,16 +1,5 @@
 pipeline {
 
-java {
-    // ЗАКОММЕНТИРУЙТЕ ИЛИ УДАЛИТЕ СТРОКУ ТУЛЧЕЙНА:
-    // toolchain {
-    //     languageVersion = JavaLanguageVersion.of(17)
-    // }
-
-    // Вместо неё жестко укажите целевую версию совместимости:
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
     agent any
 
     // Использование Java 17, настроенной в панели управления Jenkins

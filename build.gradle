@@ -7,10 +7,10 @@ plugins {
 group = 'spring.train'
 version = '0.0.1-SNAPSHOT'
 
+// ИЗМЕНЕНО: Отключили жесткий toolchain и заменили на свойства совместимости
 java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(17)
-	}
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 repositories {
