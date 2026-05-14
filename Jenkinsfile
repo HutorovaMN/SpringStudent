@@ -1,8 +1,7 @@
 pipeline {
-
     agent any
 
-    // Использование Java 17, настроенной в панели управления Jenkins
+    // Подключаем Java 17, настроенную в интерфейсе Jenkins
     tools {
         jdk 'jenkins-jdk17'
     }
@@ -25,7 +24,7 @@ pipeline {
         APP_PORT = "8081"
         APP_URL  = "http://localhost:${APP_PORT}"
 
-        // Параметры встроенной базы данных H2
+        // Конфигурация встроенной БД H2 для стабильного запуска в Jenkins
         SPRING_DATASOURCE_URL      = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"
         SPRING_DATASOURCE_USERNAME = "postgres"
         SPRING_DATASOURCE_PASSWORD = "mysecretpassword"
@@ -47,15 +46,15 @@ pipeline {
 
         stage('Compile') {
             steps {
-                // Передаем путь к Java из Jenkins прямо в локальный Gradle Toolchain
-                sh './gradlew compileJava -x test -Porg.gradle.java.installations.paths="${JAVA_HOME}"'
+                // Стандартная компиляция, использующая Java 17 из блока tools
+                sh './gradlew compileJava -x test'
             }
         }
 
         stage('Build Jar') {
             steps {
-                // Собираем исполняемый jar с явным указанием пути к Java 17
-                sh "./gradlew ${params.BUILD_TYPE} -x test -Porg.gradle.java.installations.paths=\"${JAVA_HOME}\""
+                // Сборка Jar-архива без конфликтов с Toolchain
+                sh "./gradlew ${params.BUILD_TYPE} -x test"
             }
             post {
                 success {
@@ -70,16 +69,16 @@ pipeline {
             }
             steps {
                 script {
-                    // Корректное завершение старого процесса по имени файла вместо fuser
+                    // Очистка порта перед запуском с помощью pkill вместо fuser
                     sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
 
-                    // Фоновый запуск приложения с перенаправлением логов
+                    // Фоновый запуск приложения
                     sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=8081 > app_log.txt 2>&1 &'
 
                     echo "Waiting for app to start with H2 database..."
                     sleep 60
 
-                    // Проверка успешного старта сервера
+                    // Проверка, что порт отвечает
                     def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
                     if (r != 0) {
                         error "Приложение не поднялось. Проверьте логи ниже."
@@ -92,7 +91,7 @@ pipeline {
 
     post {
         always {
-            // Вывод логов Spring Boot в общую консоль Jenkins для разбора ошибок
+            // Печать логов приложения в общую консоль Jenkins для отладки
             echo "--- APPLICATION LOGS START ---"
             sh "cat app_log.txt || true"
             echo "--- APPLICATION LOGS END ---"
