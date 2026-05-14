@@ -34,5 +34,3 @@ springdoc:
     path: /swagger-ui.html
   # Принудительно отключаем подмену хоста из заголовков Docker/Jenkins
   use-management-port: false
-
-
