@@ -111,8 +111,8 @@ pipeline {
 
     environment {
         GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
-        // Порт внутри контейнера приложения останется 3030
         APP_PORT = "3030"
+        APP_URL  = "http://localhost:${APP_PORT}"
 
         SPRING_DATASOURCE_URL      = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"
         SPRING_DATASOURCE_USERNAME = "sa"
@@ -153,33 +153,26 @@ pipeline {
         stage('Run Application') {
             steps {
                 script {
-                    // Используем корректный Groovy-синтаксис 'if' вместо декларативного 'when'
                     if (params.RUN_STUDENT) {
-                        echo "Stopping old container if exists..."
-                        sh 'docker stop student-app || true'
-                        sh 'docker rm student-app || true'
+                        echo "Killing previous application process if running..."
+                        sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
 
-                        echo "Creating Dockerfile..."
-                        sh '''
-                        cat <<EOF > Dockerfile
-                        FROM eclipse-temurin:21-jre-jammy
-                        COPY build/libs/spring-0.0.1-SNAPSHOT.jar app.jar
-                        EXPOSE 3030
-                        ENTRYPOINT ["java", "-jar", "app.jar", "--server.port=3030"]
-                        EOF
-                        '''
+                        echo "Starting Spring Boot application in background..."
+                        // Ключевой момент: dontKillMe сообщает Jenkins не трогать этот процесс фоном
+                        withEnv(['JENKINS_NODE_COOKIE=dontKillMe']) {
+                            sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=3030 > app_log.txt 2>&1 &'
+                        }
 
-                        echo "Building Docker Image..."
-                        sh 'docker build -t student-app:latest .'
-
-                        echo "Starting Docker Container on host port 8081..."
-                        // Пробрасываем внутренний порт 3030 на внешний порт 8081 хост-машины
-                        sh 'docker run -d --name student-app -p 8081:3030 student-app:latest'
-
-                        echo "Waiting for app to initialize..."
+                        echo "Waiting 30 seconds for app to initialize..."
                         sleep 30
 
-                        echo "Application successfully started and isolated in container!"
+                        // Проверяем локально внутри контейнера, поднялся ли сервер
+                        def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
+                        if (r != 0) {
+                            error "Приложение не поднялось внутри контейнера. Проверьте app_log.txt."
+                        }
+
+                        echo "Application successfully started!"
                     } else {
                         echo "Запуск приложения пропущен пользователем (RUN_STUDENT = false)"
                     }
@@ -190,15 +183,17 @@ pipeline {
 
     post {
         always {
-            echo "--- PIPELINE FINISHED ---"
+            echo "--- APPLICATION LOGS START ---"
+            sh "cat app_log.txt || true"
+            echo "--- APPLICATION LOGS END ---"
         }
         success {
-            echo "🎉 Сборка успешно завершена с параметрами: RUN_STUDENT=${params.RUN_STUDENT}, TYPE=${params.BUILD_TYPE}"
-            echo "Если RUN_STUDENT=true, приложение доступно по адресу: http://localhost:8081"
+            echo "🎉 Сборка успешно завершена!"
+            echo "Приложение доступно по адресу: http://localhost:3030"
+            echo "Swagger доступен по адресу: http://localhost:3030/swagger-ui.html"
         }
         failure {
             echo '❌ Ошибка сборки. Проверьте шаги выше.'
         }
     }
 }
-
