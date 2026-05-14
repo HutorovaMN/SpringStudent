@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    // Автоматическая установка Java 17 средствами Jenkins
+    tools {
+        jdk 'jenkins-jdk17'
+    }
+
     parameters {
         booleanParam(
             name: 'RUN_STUDENT',
@@ -19,7 +24,6 @@ pipeline {
         APP_PORT = "8081"
         APP_URL  = "http://localhost:${APP_PORT}"
 
-        // Встраиваем H2 базу, чтобы приложение успешно запустилось в Jenkins
         SPRING_DATASOURCE_URL      = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"
         SPRING_DATASOURCE_USERNAME = "postgres"
         SPRING_DATASOURCE_PASSWORD = "mysecretpassword"
@@ -41,13 +45,14 @@ pipeline {
 
         stage('Compile') {
             steps {
-                sh './gradlew compileJava -x test'
+                // Отключаем автозагрузку Gradle Toolchain, чтобы принудительно использовать Java от Jenkins
+                sh './gradlew compileJava -x test -Porg.gradle.java.installations.auto-download=false'
             }
         }
 
         stage('Build Jar') {
             steps {
-                sh "./gradlew ${params.BUILD_TYPE} -x test"
+                sh "./gradlew ${params.BUILD_TYPE} -x test -Porg.gradle.java.installations.auto-download=false"
             }
             post {
                 success {
@@ -56,24 +61,22 @@ pipeline {
             }
         }
 
-        // Новая стадия: запуск приложения в фоне без внешних тестов
         stage('Run Application') {
             when {
                 expression { return params.RUN_STUDENT }
             }
             steps {
                 script {
-                    // Убиваем старый процесс, если он остался от прошлых запусков
-                    sh "fuser -k ${APP_PORT}/tcp || true"
+                    // Замена fuser на pkill, так как fuser отсутствует в контейнере
+                    sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
 
-                    // Запускаем приложение в фоновом режиме
+                    // Запуск исполняемого jar-файла
                     sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=8081 > app_log.txt 2>&1 &'
 
-                    // ВСТАВИЛ СТРОКУ СЮДА
                     echo "Waiting for app to start with H2 database..."
                     sleep 60
 
-                    // Проверяем, жива ли сборка
+                    // Проверка доступности
                     def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
                     if (r != 0) {
                         error "Приложение не поднялось. Проверьте логи ниже."
@@ -86,12 +89,9 @@ pipeline {
 
     post {
         always {
-            // Выводим логи приложения прямо в консоль сборки для отладки
             echo "--- APPLICATION LOGS START ---"
             sh "cat app_log.txt || true"
             echo "--- APPLICATION LOGS END ---"
-
-            // Внимание: команда fuser отсюда убрана, чтобы приложение ОСТАЛОСЬ работать
         }
         success {
             echo "🎉 Сборка успешно завершена вручную с параметрами: RUN_STUDENT=${params.RUN_STUDENT}, TYPE=${params.BUILD_TYPE}"
