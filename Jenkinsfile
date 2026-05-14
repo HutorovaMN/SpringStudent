@@ -158,18 +158,27 @@ pipeline {
                         sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
 
                         echo "Starting Spring Boot application in background..."
-                        // Ключевой момент: dontKillMe сообщает Jenkins не трогать этот процесс фоном
+                        // Переменная dontKillMe не дает Jenkins убивать процесс после окончания сборки
                         withEnv(['JENKINS_NODE_COOKIE=dontKillMe']) {
                             sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=3030 > app_log.txt 2>&1 &'
                         }
 
-                        echo "Waiting 30 seconds for app to initialize..."
-                        sleep 30
+                        echo "Waiting for app to initialize (polling)..."
+                        def applicationStarted = false
 
-                        // Проверяем локально внутри контейнера, поднялся ли сервер
-                        def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
-                        if (r != 0) {
-                            error "Приложение не поднялось внутри контейнера. Проверьте app_log.txt."
+                        // Пытаемся достучаться до приложения в течение 2 минут (24 попытки по 5 секунд)
+                        for (int i = 0; i < 24; i++) {
+                            sleep 5
+                            def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
+                            if (r == 0) {
+                                applicationStarted = true
+                                break
+                            }
+                            echo "Application is still starting, waiting... (Attempt ${i+1}/24)"
+                        }
+
+                        if (!applicationStarted) {
+                            error "Приложение не поднялось за отведенное время. Проверьте app_log.txt ниже."
                         }
 
                         echo "Application successfully started!"
@@ -197,3 +206,4 @@ pipeline {
         }
     }
 }
+
