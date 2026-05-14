@@ -1,11 +1,6 @@
 pipeline {
     agent any
 
-    // Подключаем Java 17, настроенную в интерфейсе Jenkins
-    tools {
-        jdk 'jenkins-jdk17'
-    }
-
     parameters {
         booleanParam(
             name: 'RUN_STUDENT',
@@ -24,7 +19,6 @@ pipeline {
         APP_PORT = "3030"
         APP_URL  = "http://localhost:${APP_PORT}"
 
-        // Конфигурация встроенной БД H2 для стабильного запуска в Jenkins
         SPRING_DATASOURCE_URL      = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1"
         SPRING_DATASOURCE_USERNAME = "postgres"
         SPRING_DATASOURCE_PASSWORD = "mysecretpassword"
@@ -46,15 +40,14 @@ pipeline {
 
         stage('Compile') {
             steps {
-                // Стандартная компиляция, использующая Java 17 из блока tools
-                sh './gradlew compileJava -x test'
+                // Разрешаем Gradle скачивать JDK автоматически, если локальной версии нет
+                sh './gradlew compileJava -x test -Porg.gradle.java.installations.auto-download=true'
             }
         }
 
         stage('Build Jar') {
             steps {
-                // Сборка Jar-архива без конфликтов с Toolchain
-                sh "./gradlew ${params.BUILD_TYPE} -x test"
+                sh "./gradlew ${params.BUILD_TYPE} -x test -Porg.gradle.java.installations.auto-download=true"
             }
             post {
                 success {
@@ -69,21 +62,17 @@ pipeline {
             }
             steps {
                 script {
-                    // Очистка порта перед запуском с помощью pkill вместо fuser
                     sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
-
-                    // Фоновый запуск приложения
                     sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=3030 > app_log.txt 2>&1 &'
 
                     echo "Waiting for app to start with H2 database..."
                     sleep 60
 
-                    // Проверка, что порт отвечает
                     def r = sh(script: "curl -sI ${APP_URL} | grep HTTP", returnStatus: true)
                     if (r != 0) {
                         error "Приложение не поднялось. Проверьте логи ниже."
                     }
-                    echo "Application successfully started and running on port ${APP_PORT}!"
+                    echo "Application successfully started and running on port 3030!"
                 }
             }
         }
@@ -91,7 +80,6 @@ pipeline {
 
     post {
         always {
-            // Печать логов приложения в общую консоль Jenkins для отладки
             echo "--- APPLICATION LOGS START ---"
             sh "cat app_log.txt || true"
             echo "--- APPLICATION LOGS END ---"
