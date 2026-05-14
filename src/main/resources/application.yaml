@@ -26,7 +26,7 @@ spring:
       ddl-auto: update
 
 server:
-  port: 8081
+  port: 3030
 
 # НАСТРОЙКА SWAGGER ДЛЯ LOCALHOST
 springdoc:

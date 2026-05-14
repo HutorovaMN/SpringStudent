@@ -21,7 +21,7 @@ pipeline {
 
     environment {
         GRADLE_USER_HOME = "${WORKSPACE}/.gradle"
-        APP_PORT = "8081"
+        APP_PORT = "3030"
         APP_URL  = "http://localhost:${APP_PORT}"
 
         // Конфигурация встроенной БД H2 для стабильного запуска в Jenkins
