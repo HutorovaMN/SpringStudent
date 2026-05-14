@@ -24,8 +24,7 @@ pipeline {
         SPRING_DATASOURCE_PASSWORD = ""
         SPRING_JPA_HIBERNATE_DDL_AUTO = "update"
     }
-    username: sa
-    password:
+
     stages {
         stage('Checkout') {
             steps {
