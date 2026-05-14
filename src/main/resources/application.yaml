@@ -29,3 +29,11 @@ server:
   port: 8081
 
 
+# ДОБАВЬТЕ ЭТОТ БЛОК СТРОГО СЮДА:
+springdoc:
+  openapi:
+    servers:
+      - url: http://localhost:8081
+        description: Local Dev Server
+
+
