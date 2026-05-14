@@ -73,7 +73,7 @@ pipeline {
                     sh "pkill -f spring-0.0.1-SNAPSHOT.jar || true"
 
                     // Фоновый запуск приложения
-                    sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=8081 > app_log.txt 2>&1 &'
+                    sh 'nohup java -jar build/libs/spring-0.0.1-SNAPSHOT.jar --server.port=3030 > app_log.txt 2>&1 &'
 
                     echo "Waiting for app to start with H2 database..."
                     sleep 60
